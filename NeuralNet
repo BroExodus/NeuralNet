@@ -1,0 +1,458 @@
+import java.util.Random;
+
+public class NeuralNet {
+    private int layerCount;
+    private int inputCount;
+
+    //holds the dimensions of the neural net
+    private int[] dimensions;
+    //holds all the weight values
+    private float[][][] weights;
+    //holds all the changes that need to be made to the weights
+    private float[][][] dweights;
+    //holds all the bias values
+    private float[][] biases;
+    //holds all the changes that need to be made to the biases
+    private float[][] dbiases;
+    //stores all the activation values of each neuron
+    private float[][] activationMtx;
+
+    //holds the derivative with respect to the previous activations
+    private float[][][] dprevs;
+
+
+
+    public NeuralNet (int inputCount, int[] nodeLayout) {
+        dimensions = nodeLayout;
+        //initializing weights and biases
+        weights = new float[nodeLayout.length][][];
+        biases = new float[nodeLayout.length][];
+
+        //initializing the derivatives
+        dweights = new float[nodeLayout.length][][];
+        dbiases = new float[nodeLayout.length][];
+        dprevs = new float[nodeLayout.length+1][][];
+
+        activationMtx = new float[nodeLayout.length][];
+
+        this.inputCount = inputCount;
+        layerCount = nodeLayout.length;
+
+        int prevLayer = inputCount;
+        //for every layer
+        for(int i =0; i < weights.length; i++){
+            //# of nodes in layer i
+            biases[i] = new float[dimensions[i]];
+            dbiases[i] = new float[dimensions[i]];
+            activationMtx[i] = new float[dimensions[i]];
+
+            weights[i] = new float[dimensions[i]][];
+            dweights[i] = new float[dimensions[i]][];
+            dprevs[i] = new float[dimensions[i]][];
+            if(i == weights.length-1){
+                dprevs[i+1]= new float[dimensions[i]][];
+            }
+            //for every node in the layer
+            for(int j =0; j< dimensions[i]; j++){
+                weights[i][j]= new float[prevLayer];
+                dweights[i][j]= new float[prevLayer];
+                dprevs[i][j]= new float[prevLayer];
+                //if it's the last layer, account for dprev's cost layer
+                if(i == weights.length-1){
+                    dprevs[i+1][j]= new float[1];
+                }
+
+
+            }
+            prevLayer = nodeLayout[i];
+
+        }
+
+
+    }
+
+    /**
+     * Randomizes the weights and biases of the neural net.
+     */
+    public void randomizeWandB(){
+        for(int i =0; i < weights.length; i++){
+            for(int j =0; j < weights[i].length; j++){
+                biases[i][j] = (float)Math.random();
+                for(int k =0; k < weights[i][j].length; k++){
+                    weights[i][j][k] = (float)Math.random();
+                }
+            }
+        }
+    }
+    /**
+     *sets the weights and biases based on given matrices
+     *
+     * */
+    public void setWandB(float[][][] weightsIn, float[][] biasesIn){
+        for (int i = 0; i <weights.length ; i++) {
+            for (int j = 0; j <weights[i].length ; j++) {
+                biases[i][j]=biasesIn[i][j];
+                for (int k = 0; k <weights[i][j].length ; k++) {
+                    weights[i][j][k]= weightsIn[i][j][k];
+                }
+            }
+        }
+    }
+    /**
+     * The feed forward algorithm
+     * @param trainingData: the values of the a single training set
+     */
+    public void feedForward(float[] trainingData){
+        float[] x = trainingData;
+        for (int i = 0; i < dimensions.length; i++) {
+            for (int j = 0; j <dimensions[i] ; j++) {
+                activationMtx[i][j]=SigmoidActivateNode(weights[i][j],x,biases[i][j]);
+            }
+            x = activationMtx[i];
+        }
+    }
+
+    /**
+     * Sigmoid activation of a node
+     * @param weights, the weights of the node
+     * @param inputs the inputs of the node
+     * @param bias, the biases of the node
+     * @return the activated value of the node
+     */
+    public float SigmoidActivateNode(float[] weights, float[] inputs, float bias){
+        float sum =0;
+        for (int i = 0; i < weights.length; i++){
+            sum += weights[i] * inputs[i];
+        }
+        sum += bias;
+
+        return sigmoidActivation(sum);
+    }
+
+    /**
+     * The sigmoid activation function.
+     * @return an activated sigmoid value
+     */
+    private float sigmoidActivation(float input){
+        return (float)(((double)1)/(1+Math.pow(Math.E,-1*input)));
+    }
+
+    /**
+     * Leaky ReLU Activation function.
+     * @param input
+     * @return
+     */
+    private float leakyReLUActivation(float input){
+        return (float)Math.max(0.1*input, input);
+    }
+
+    /**
+     * The ReLU Activation function.
+     * @param input
+     * @return
+     */
+    private float reLUActivation(float input){
+        return Math.max(0, input);
+    }
+
+    /**
+     * The tanH Activation function.
+     * @param input
+     * @return
+     */
+    private float tanHActivation(float input){
+        return (float)Math.tanh(input);
+    }
+
+
+    public float dCostFunct(float expected, float activation){
+        return 2*(activation-expected);
+    }
+
+    /**
+     * takes the derivative of the activation function
+     * @param actVal the value of the calculated sigmoid funciton
+     * @return the derivative of said sigmoid funciton
+     */
+    public float dSigmoidFunc(float actVal){
+        //return 1/(4*((float)Math.pow(Math.cosh(x/2),2))); //function in terms of X instead of sig(x)
+        return actVal *(1-actVal);
+    }
+
+    /**
+     * a method designed to zero out the dweights and dbiases arrays for reuse
+     */
+    public void zeroDWB(){
+        for (int i = 0; i <dweights.length ; i++) {
+            for (int j = 0; j <dweights[i].length ; j++) {
+                dbiases[i][j]=0;
+                for (int k = 0; k <dweights[i][j].length ; k++) {
+                    dweights[i][j][k]=0;
+                }
+
+            }
+
+        }
+
+    }
+
+    /**
+     * the backpropagation function of the neural net
+     * the backpropagation function of the neural net
+     * @param expected
+     * @param trainingdata
+     */
+    public void backpropagate(float[] expected, float[] trainingdata){
+
+        //set the last layer of dprevs value to the derivative of the cost function
+        for (int i = 0; i <expected.length ; i++) {
+            dprevs[dprevs.length-1][i][0]= (float)(2*(float)(expected[i]-activationMtx[activationMtx.length-1][i]));
+        }
+
+        //for each layer
+        for (int i = layerCount-1; i >=0 ; i--) {
+            //for each node in said layer
+            for (int j = 0; j <weights[i].length ; j++) {
+                //a temp bias value to add all the dprevs together
+                float dBiasTemp = 0;
+                for (int k = 0; k <dprevs[i+1].length ; k++) {
+                    if(i == layerCount-1 ) {
+                        dBiasTemp += dprevs[i + 1][k][0];
+                    }
+                    else {
+                        dBiasTemp += dprevs[i + 1][k][j];
+                    }
+
+
+                }
+                //if we're on the output layer and there is more than one output
+                //then there is no summation required, rendering line 220 obsolete.
+                if(i== layerCount-1 && dimensions[dimensions.length-1]>1) {
+                    dbiases[i][j] = +dSigmoidFunc(activationMtx[i][j]) * dprevs[i+1][j][0];
+                }
+                else{
+                    dbiases[i][j] = +dSigmoidFunc(activationMtx[i][j]) * dBiasTemp;
+                }
+
+                //for each weight of said node
+                for (int k = 0; k < weights[i][j].length ; k++) {
+                    if(i!=0) {
+                        dweights[i][j][k] += dbiases[i][j] * activationMtx[i - 1][k];
+                    }
+                    else{
+                        dweights[i][j][k] += dbiases[i][j] * trainingdata[k];
+                    }
+
+                    dprevs[i][j][k] += dbiases[i][j]* weights[i][j][k];
+                }
+            }
+        }
+
+
+    }
+
+    /**
+     * prints out the neural net's output after a feed forward
+     */
+    public void printOutput(){
+        System.out.println("final output value of the net: ");
+        for (int i = 0; i < activationMtx.length ; i++) {
+            System.out.println("out "+ i +": "+activationMtx[activationMtx.length-1][i]);
+        }
+        System.out.println("-----------------------------------------------");
+    }
+
+    /**
+     * updates the weights and biases from the backpropagation calculations
+     */
+    public void updateValues(float learningRate){
+        for (int i = 0; i <weights.length ; i++) {
+            for (int j = 0; j <weights[i].length ; j++) {
+                biases[i][j] += dbiases[i][j] * learningRate;
+                dbiases[i][j]=0;
+                for (int k = 0; k <weights[i][j].length ; k++) {
+                    weights[i][j][k] += dweights[i][j][k] * learningRate;
+                    dweights[i][j][k]=0;
+                    dprevs[i][j][k]=0;
+                }
+            }
+        }
+    }
+
+    /**
+     * used to clip your float value to prevent exploding gradients
+     * @param fIn: the float to be clipped
+     * @return a clipped floating point value
+     */
+    private float clip(float fIn){
+        if(fIn > 1)
+            return(float) 1;
+        else if(fIn <-1)
+            return(float)-1;
+        else
+            return fIn;
+    }
+    public void printWeights(){
+        System.out.println("Weights");
+        for (int i = 0; i <weights.length ; i++) {
+            System.out.println("layer: "+i);
+            for (int j = 0; j <weights[i].length ; j++) {
+                System.out.print("node: "+j+" @ "+i+" [ ");
+                for (int k = 0; k <weights[i][j].length ; k++) {
+                    System.out.print(weights[i][j][k]+", ");
+
+                }
+                System.out.println("]   ");
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+
+    public void printBiases(){
+        System.out.println("Biases");
+        for (int i = 0; i <biases.length ; i++) {
+            System.out.println("layer: "+i);
+            for (int j = 0; j <biases[i].length ; j++) {
+                System.out.print("node: "+j+" @ "+i+" [ "+ biases[i][j]+"]   " );
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+
+    public void printActivationMtx(){
+        System.out.println("Activations");
+        for (int i = 0; i <activationMtx.length ; i++) {
+            System.out.println("layer: "+i);
+            for (int j = 0; j <activationMtx[i].length ; j++) {
+                System.out.print("node: "+j+" @ "+i+" [ "+ activationMtx[i][j]+"]   " );
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+
+    public void printDWeights(){
+        System.out.println("DWeights");
+        for (int i = 0; i <dweights.length ; i++) {
+            System.out.println("layer: "+i);
+            for (int j = 0; j <dweights[i].length ; j++) {
+                System.out.print("node: "+j+" @ "+i+" [ ");
+                for (int k = 0; k <dweights[i][j].length ; k++) {
+                    System.out.print(dweights[i][j][k]+", ");
+
+                }
+                System.out.println("]   ");
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+    public void printDBiases(){
+        System.out.println("DBiases");
+        for (int i = 0; i <dbiases.length ; i++) {
+            System.out.println("layer: "+i);
+            for (int j = 0; j <dbiases[i].length ; j++) {
+                System.out.print("node: "+j+" @ "+i+" [ "+ dbiases[i][j]+"]   " );
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+
+    public int getOutputCount(){
+        return activationMtx[activationMtx.length-1].length;
+    }
+
+    public static float[] generateRandomFloatArr(int size){
+        Random r = new Random();
+        float[] ret = new float[size];
+        for (int i = 0; i <ret.length ; i++) {
+            ret[i] = r.nextFloat();
+        }
+        return ret;
+    }
+
+    public static int[] generateRandomIntArr(int size){
+        Random r = new Random();
+        int[] ret = new int[size];
+        for (int i = 0; i <ret.length ; i++) {
+            ret[i] = r.nextInt(11);
+        }
+        return ret;
+    }
+
+    public static float[] generateRandomBinArr(int size){
+        Random r = new Random();
+        float[] ret = new float[size];
+        for (int i = 0; i <ret.length ; i++) {
+            ret[i] = (float)r.nextInt(2);
+        }
+        return ret;
+    }
+
+    public float[][] getActivationMtx() {
+        return activationMtx;
+    }
+
+    public static void main(String[] args) {
+        int tests = 10;
+        double score = 100;
+        double scoreMax = 100;
+        System.out.println("conducting "+ tests + " tests. Checking learning score and execution time...");
+        long startTime = System.currentTimeMillis();
+
+        for (int cnt = 0; cnt < tests ; cnt++) {
+            Random r = new Random();
+            int inputCnt = 1+r.nextInt(10);
+            float[] inputs = generateRandomFloatArr(inputCnt);
+            int[] layout = generateRandomIntArr(1 + r.nextInt(10));
+            float learningRate = (float)0.001;
+
+            NeuralNet nn = new NeuralNet(inputCnt, layout);
+
+            nn.randomizeWandB();
+            nn.zeroDWB();
+
+            nn.feedForward(inputs);
+
+            //nn.printActivationMtx();
+
+
+
+
+            float[] expected = generateRandomBinArr(nn.getOutputCount());
+
+
+            //System.out.println("\n----------------");
+            for (int i = 0; i <1000000 ; i++) {
+                nn.backpropagate(expected,inputs);
+                nn.updateValues(learningRate);
+                nn.feedForward(inputs);
+
+            }
+            //System.out.println("\nafter adjustments");
+            // nn.printActivationMtx();
+            // System.out.println("EXPECTED VALUES");
+            // for (int i = 0; i <expected.length ; i++) {
+            //    System.out.print("i="+i+": "+ expected[i]+"\t");
+
+            //}
+            for (int i = 0; i <expected.length ; i++) {
+                if(Math.abs(expected[i]-nn.getActivationMtx()[nn.getActivationMtx().length-1][i]) <= 0.001 ){
+                    score -= scoreMax/tests;
+                }
+            }
+        }
+        long endTime = System.currentTimeMillis();
+        long exectime = endTime - startTime;
+
+        System.out.println("Accuracy Score: "+ score+ "%");
+        System.out.println("Speed : "+ exectime + " ms");
+
+    }
+
+
+}
+
